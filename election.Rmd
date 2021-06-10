@@ -1,0 +1,441 @@
+---
+title: "election"
+author: "kim jun hyeong"
+date: '2021 5 27 '
+output: html_document
+---
+
+# 데이터 수집 및 전처리
+
+```{r}
+install.packages("dplyr",repos = "http://cran.us.r-project.org")
+install.packages("ggplot2",repos = "http://cran.us.r-project.org")
+install.packages("readxl",repos = "http://cran.us.r-project.org")
+library(dplyr)
+library(ggplot2)
+library(readxl)
+```
+
+# 제 21대 안성시 국회의원 선거 데이터 불러오기
+
+```{r}
+election <- read_excel("C:/Users/user/Desktop/선거/제21대_개표상황(안성시).xlsx")
+str(election)
+```
+
+# 변수이름 변경하기
+
+```{r}
+election <- election %>% 
+   rename(location="투표구명",
+   elector="선거인수",
+   vote="투표수",
+   Lee="이규민",
+   Kim="김학용",
+   Song="송민정",
+   tot="계",
+   invalid="무효 투표수",
+   abst="기권수")
+str(election)
+```
+# 파생변수 만들기
+
+# 변수 설명
+
+turnout(투표율) = (투표수 / 선거인수) * 100
+Lee_vote(이규민 득표율) = (이규민 / 계) * 100
+Kim_vote(김학용 득표율) = (김학용 / 계) * 100
+Song_vote(송민정 득표율) = (송민정 / 계) * 100
+invalid_vote(무효 득표율) = (무효 투표수 / 계) * 100
+
+* Lee_vote + Kim_vote + Song_vote + invalid_vote = 100 %
+
+Lee_turn(이규민 투표율) = (이규민 / 투표수) * 100
+Kim_turn(김학용 투표율) = (김학용 / 투표수) * 100
+Song_turn(송민정 투표율) = (송민정 / 투표수) * 100
+
+* Lee_turn + Kim_turn + Song_turn = 100 %
+
+LK_diff(이-김 투표율 차이) = Lee_turn - Kim_turn
+LS_diff(이-송 투표율 차이) = Lee_turn - Song_turn
+KS_diff(김-송 투표율 차이) = Kim_turn - Song_turnS
+```{r}
+election <- election %>% 
+  mutate(turnout=(vote/elector)*100,
+         Lee_vote=(Lee/tot)*100,
+         Kim_vote=(Kim/tot)*100,
+         Song_vote=(Song/tot)*100,
+         invalid_vote=(invalid/tot)*100,
+         Lee_turn=(Lee/vote)*100,
+         Kim_turn=(Kim/vote)*100,
+         Song_turn=(Song/vote)*100,
+         LK_diff=Lee_turn-Kim_turn,
+         LS_diff=Lee_turn-Song_turn,
+         KS_diff=Kim_turn-Song_turn)
+str(election)
+```
+# 이규민 후보 지역별 투표율
+
+```{r}
+location_Lee_turn <- election %>% 
+   group_by(location) %>% 
+   summarise(pct=Lee_turn)
+
+ggplot(data=location_Lee_turn,aes(x=location,y=pct))+
+   geom_col()+
+   coord_flip()+
+   scale_y_continuous(limits = c(0, 60))
+
+```
+# 김학용 후보 지역별 투표율
+
+```{r}
+location_Kim_turn <- election %>% 
+   group_by(location) %>% 
+   summarise(pct=Kim_turn)
+
+ggplot(data=location_Kim_turn,aes(x=location,y=pct))+
+   geom_col()+
+   coord_flip()+
+   scale_y_continuous(limits = c(0, 60))
+
+```
+# 송민정 후보 지역별 투표율
+
+```{r}
+location_Song_turn <- election %>% 
+   group_by(location) %>% 
+   summarise(pct=Song_turn)
+
+ggplot(data=location_Song_turn,aes(x=location,y=pct))+
+   geom_col()+
+   coord_flip()+
+     scale_y_continuous(limits = c(0, 60))
+
+
+```
+# 후보간 지역별 우세정도 확인
+
+* 투표율 차이 기준  
+투표율 차이가 +-5 이내 이면 초접전,  
+투표율 차이가 +-10 이내 이면 접전,
+투표율 차이가 +15 이내 이면 우세,
+투표율 차이가 -15 이내 이면 약세,
+투표율 차이가 +15 이상 이면 최우세,
+투표율 차이가 -15 이하 이면 최약세 
+
+# 1. 이규민(기준) VS 김학용
+
+```{r}
+election %>% 
+mutate(LK_grade=ifelse(LK_diff >= -5 & LK_diff <= 5,"초접전",
+ifelse(LK_diff >= -10 & LK_diff <= 10,"접전",
+ifelse(LK_diff >= -15 & LK_diff < 10 ,"약세",
+ifelse(LK_diff <= 15 & LK_diff > - 15, "우세",
+ifelse(LK_diff > 15 ,"초우세","초약세")))))) %>% 
+group_by(LK_grade) %>% 
+summarise(n=n()) %>% 
+mutate(total=sum(n),
+pct=round(n/total*100,1)) %>% 
+select(LK_grade,n,pct) %>% 
+arrange(desc(n))
+```
+# 2. 이규민(기준) VS 송민정
+
+```{r}
+election %>% 
+mutate(LS_grade=ifelse(LS_diff >= -5 & LS_diff <= 5,"초접전",
+ifelse(LS_diff >= -10 & LS_diff <= 10,"접전",
+ifelse(LS_diff >= -15 & LS_diff < 10 ,"약세",
+ifelse(LS_diff <= 15 & LS_diff > - 15, "우세",
+ifelse(LS_diff > 15 ,"초우세","초약세")))))) %>% 
+group_by(LS_grade) %>% 
+summarise(n=n()) %>% 
+mutate(total=sum(n),
+pct=round(n/total*100,1)) %>% 
+select(LS_grade,n,pct) %>% 
+arrange(desc(n))
+```
+# 3. 김학용(기준) VS 송민정
+
+```{r}
+election %>% 
+mutate(KS_grade=ifelse(KS_diff >= -5 & KS_diff <= 5,"초접전",
+ifelse(KS_diff >= -10 & KS_diff <= 10,"접전",
+ifelse(KS_diff >= -15 & KS_diff < 10 ,"약세",
+ifelse(KS_diff <= 15 & KS_diff > - 15, "우세",
+ifelse(KS_diff > 15 ,"초우세","초약세")))))) %>% 
+group_by(KS_grade) %>% 
+summarise(n=n()) %>% 
+mutate(total=sum(n),
+pct=round(n/total*100,1)) %>% 
+select(KS_grade,n,pct) %>% 
+arrange(desc(n))
+```
+
+# 후보별 지역별 투표수(bar chart)
+```{r}
+barplot(cbind(Lee,Kim,Song,invalid)~location,main="지역별 투표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,30000),election)
+legend(x=12,y=30000,legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+
+# 안성시 국회의원 행열 변환 데이터 불러오기
+
+```{r}
+election_t <- read_excel("C:/Users/user/Downloads/제21대_개표상황_t.xlsx")
+str(election_t)
+```
+
+# 지역별 후보 득표율(pie chart)
+
+1. 기타
+
+```{r}
+pct_기타 <- round(election_t$기타 / sum(election_t$기타)*100,1)
+lab <- paste(pct_기타,"%")
+pie(pct_기타,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+2. 공도읍
+
+```{r}
+pct_공도 <- round(election_t$공도 / sum(election_t$공도)*100,1)
+lab <- paste(pct_공도,"%")
+pie(pct_공도,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+
+```
+3. 보개면
+
+```{r}
+pct_보개 <- round(election_t$보개 / sum(election_t$보개)*100,1)
+lab <- paste(pct_보개,"%")
+pie(pct_보개,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+4. 금광면
+
+```{r}
+pct_금광 <- round(election_t$금광 / sum(election_t$금광)*100,1)
+lab <- paste(pct_금광,"%")
+pie(pct_금광,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+5. 서운면
+```{r}
+pct_서운 <- round(election_t$서운 / sum(election_t$서운)*100,1)
+lab <- paste(pct_서운,"%")
+pie(pct_서운,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+6. 미양면
+
+```{r}
+pct_미양 <- round(election_t$미양 / sum(election_t$미양)*100,1)
+lab <- paste(pct_미양,"%")
+pie(pct_미양,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+7. 대덕면
+
+```{r}
+pct_대덕 <- round(election_t$대덕 / sum(election_t$대덕)*100,1)
+lab <- paste(pct_대덕,"%")
+pie(pct_대덕,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+8. 양성면
+
+```{r}
+pct_양성 <- round(election_t$양성 / sum(election_t$양성)*100,1)
+lab <- paste(pct_양성,"%")
+pie(pct_양성,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+9. 원곡면
+
+```{r}
+pct_원곡 <- round(election_t$원곡 / sum(election_t$원곡)*100,1)
+lab <- paste(pct_원곡,"%")
+pie(pct_원곡,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+10. 일죽면
+
+```{r}
+pct_일죽 <- round(election_t$일죽 / sum(election_t$일죽)*100,1)
+lab <- paste(pct_일죽,"%")
+pie(pct_일죽,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+11. 죽산면
+
+```{r}
+pct_죽산 <- round(election_t$죽산 / sum(election_t$죽산)*100,1)
+lab <- paste(pct_죽산,"%")
+pie(pct_죽산,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+12. 삼죽면
+
+```{r}
+pct_삼죽 <- round(election_t$삼죽 / sum(election_t$삼죽)*100,1)
+lab <- paste(pct_삼죽,"%")
+pie(pct_삼죽,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+13. 고삼면
+
+```{r}
+pct_고삼 <- round(election_t$고삼 / sum(election_t$고삼)*100,1)
+lab <- paste(pct_고삼,"%")
+pie(pct_고삼,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+14. 안성동
+
+```{r}
+pct_안성 <- round(election_t$안성 / sum(election_t$안성)*100,1)
+lab <- paste(pct_안성,"%")
+pie(pct_안성,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+15. 잘못투입
+
+```{r}
+pct_잘못투입 <- round(election_t$잘못투입 / sum(election_t$잘못투입)*100,1)
+lab <- paste(pct_잘못투입,"%")
+pie(pct_잘못투입,init.angle=90,col=c("blue","red","yellow","green"),label=lab)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```  
+
+
+
+
+1. 기타지역
+
+```{r}
+barplot(기타~후보,main="기타지역 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,5000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+2. 공도읍
+
+```{r}
+barplot(공도~후보,main="공도읍 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,15000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+3. 보개면
+
+```{r}
+barplot(보개~후보,main="보개면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,3000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+4. 금광면
+
+```{r}
+barplot(금광~후보,main="금광면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,3000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+5. 서운면
+
+```{r}
+barplot(서운~후보,main="서운면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,1500),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+6. 미양면
+
+```{r}
+barplot(미양~후보,main="미양면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,2000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+7. 대덕면
+
+```{r}
+barplot(대덕~후보,main="대덕면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,4000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+8. 양성면
+
+```{r}
+barplot(양성~후보,main="양성면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,2000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+9. 원곡면
+
+```{r}
+barplot(원곡~후보,main="원곡면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,2000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+10. 일죽면
+
+```{r}
+barplot(일죽~후보,main="일죽면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,2500),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+11. 죽산면
+
+```{r}
+barplot(죽산~후보,main="죽산면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,2500),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+12. 삼죽면
+
+```{r}
+barplot(삼죽~후보,main="삼죽면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,1000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+13. 고삼면
+
+```{r}
+barplot(고삼~후보,main="고삼면 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,1000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+14. 안성동
+
+```{r}
+barplot(안성~후보,main="안성동 후보 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,20000),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+15. 잘못 투입된 투표지 득표율
+
+```{r}
+barplot(잘못투입~후보,main="잘못 투입된 투표지 득표수",ylab="투표수",col=c("blue","red","yellow","green"),ylim=c(0,30),election_t)
+legend("topright",legend=c("이규민","김학용","송민정","무효표"),fill=c("blue","red","yellow","green"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
